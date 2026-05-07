@@ -1,0 +1,49 @@
+# ============================================================
+# TERMUX COMMANDS - libvoicefx
+# Copy paste satu per satu
+# ============================================================
+
+# 1. Install git (skip kalau sudah)
+pkg install git -y
+
+# 2. Config git (isi nama & email kamu)
+git config --global user.name "brruham-arch"
+git config --global user.email "emailkamu@gmail.com"
+
+# 3. Buat folder & masuk
+mkdir -p ~/libvoicefx
+cd ~/libvoicefx
+
+# 4. Init repo
+git init
+git branch -M main
+
+# 5. Tambah remote (ganti TOKEN dengan GitHub Personal Access Token kamu)
+git remote add origin https://TOKEN@github.com/brruham-arch/libvoicefx.git
+
+# 6. Salin semua file dari zip yang sudah diekstrak ke folder ini
+#    (ekstrak zip dulu, lalu copy manual via file manager ke ~/libvoicefx)
+#    Struktur yang harus ada:
+#    ~/libvoicefx/
+#      .github/workflows/build.yml
+#      jni/voicefx.cpp
+#      jni/CMakeLists.txt
+#      voicechanger.lua
+#      .gitignore
+#      README.md
+
+# 7. Stage & commit & push
+git add .
+git commit -m "init: libvoicefx v3.0 SoundTouch"
+git push -u origin main
+
+# ============================================================
+# Setelah push, buka GitHub → Actions → tunggu build selesai
+# Download libvoicefx.so dari Artifacts
+# Copy ke: Android/data/com.sampmobilerp.game/files/AML/mods/
+# ============================================================
+
+# CARA BUAT GITHUB TOKEN:
+# GitHub.com → Settings → Developer settings
+# → Personal access tokens → Tokens (classic)
+# → Generate new token → centang "repo" → Copy token

@@ -1,0 +1,45 @@
+name: Build libvoicefx
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r25c
+
+    - name: Fetch SoundTouch source
+      run: |
+        git clone --depth=1 https://github.com/surina/soundtouch.git /tmp/soundtouch
+        mkdir -p jni/soundtouch
+        cp /tmp/soundtouch/source/SoundTouch/*.cpp jni/soundtouch/
+        cp /tmp/soundtouch/source/SoundTouch/*.h   jni/soundtouch/
+        cp /tmp/soundtouch/include/SoundTouch.h    jni/soundtouch/
+
+    - name: Build armeabi-v7a
+      run: |
+        mkdir -p build
+        cmake \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=armeabi-v7a \
+          -DANDROID_PLATFORM=android-21 \
+          -DANDROID_STL=c++_static \
+          -DCMAKE_BUILD_TYPE=Release \
+          -S jni -B build
+        cmake --build build --config Release
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: libvoicefx
+        path: build/libvoicefx.so

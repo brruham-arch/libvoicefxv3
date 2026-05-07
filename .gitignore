@@ -1,0 +1,5 @@
+build/
+jni/soundtouch/
+*.so
+*.o
+.DS_Store
