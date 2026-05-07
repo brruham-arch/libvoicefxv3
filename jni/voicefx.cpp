@@ -1,6 +1,6 @@
 /**
  * voicefx.cpp - AML Voice FX Mod SA-MP Android
- * Engine: RubberBand LiveShifter (pitch shift real-time, tanpa tempo berubah)
+ * Engine: RubberBand LiveShifter
  */
 
 #include <stdint.h>
@@ -24,10 +24,12 @@ typedef unsigned int HRECORD;
 typedef unsigned int HDSP;
 typedef void (*DSPPROC)(HDSP, DWORD, void*, DWORD, void*);
 
-static float  g_pitch   = 1.0f;
-static float  g_lastPitch = 1.0f;
-static int    g_enabled = 0;
-static DWORD  g_recFreq = 8000;
+static float  g_pitch    = 1.0f;
+static float  g_formant  = 1.0f;
+static float  g_lastPitch   = 1.0f;
+static float  g_lastFormant = 1.0f;
+static int    g_enabled  = 0;
+static DWORD  g_recFreq  = 8000;
 
 #define MAX_BUF 8192
 static float g_inbuf[MAX_BUF];
@@ -43,16 +45,15 @@ static inline short clamp16(float v) {
 
 static void initRB() {
     if (g_rb) { delete g_rb; g_rb = nullptr; }
-    g_rb = new RubberBand::RubberBandLiveShifter(
-        g_recFreq, 1,
-        0
-    );
+    g_rb = new RubberBand::RubberBandLiveShifter(g_recFreq, 1, 0);
     g_rb->setPitchScale(g_pitch);
-    g_lastPitch = g_pitch;
+    g_rb->setFormantScale(g_formant);
+    g_lastPitch   = g_pitch;
+    g_lastFormant = g_formant;
 }
 
 static void dspCallback(HDSP, DWORD, void* buf, DWORD len, void*) {
-    if (!g_enabled || g_pitch == 1.0f) return;
+    if (!g_enabled || (g_pitch == 1.0f && g_formant == 1.0f)) return;
     short* s16 = (short*)buf;
     int n = (int)(len / 2);
     if (n <= 0 || n > MAX_BUF) return;
@@ -62,6 +63,10 @@ static void dspCallback(HDSP, DWORD, void* buf, DWORD len, void*) {
     if (g_lastPitch != g_pitch) {
         g_rb->setPitchScale(g_pitch);
         g_lastPitch = g_pitch;
+    }
+    if (g_lastFormant != g_formant) {
+        g_rb->setFormantScale(g_formant);
+        g_lastFormant = g_formant;
     }
 
     size_t blockSize = g_rb->getBlockSize();
@@ -104,16 +109,23 @@ static HRECORD hook_BASSRecordStart(DWORD freq, DWORD chans, DWORD flags, void* 
 }
 
 // ─── Public API ──────────────────────────────────────────────
-static void _vc_set_pitch(float f) {
+static void  _vc_set_pitch(float f) {
     if (f < 0.25f) f = 0.25f;
     if (f > 4.0f)  f = 4.0f;
     g_pitch = f;
     if (g_rb) { g_rb->setPitchScale(f); g_lastPitch = f; }
 }
-static void  _vc_enable(void)     { g_enabled = 1; if (!g_rb) initRB(); }
-static void  _vc_disable(void)    { g_enabled = 0; }
-static int   _vc_is_enabled(void) { return g_enabled; }
-static float _vc_get_pitch(void)  { return g_pitch; }
+static void  _vc_set_formant(float f) {
+    if (f < 0.25f) f = 0.25f;
+    if (f > 4.0f)  f = 4.0f;
+    g_formant = f;
+    if (g_rb) { g_rb->setFormantScale(f); g_lastFormant = f; }
+}
+static void  _vc_enable(void)      { g_enabled = 1; if (!g_rb) initRB(); }
+static void  _vc_disable(void)     { g_enabled = 0; }
+static int   _vc_is_enabled(void)  { return g_enabled; }
+static float _vc_get_pitch(void)   { return g_pitch; }
+static float _vc_get_formant(void) { return g_formant; }
 
 struct VcAPI {
     void  (*set_pitch)(float);
@@ -121,17 +133,20 @@ struct VcAPI {
     void  (*disable)(void);
     int   (*is_enabled)(void);
     float (*get_pitch)(void);
+    void  (*set_formant)(float);
+    float (*get_formant)(void);
 };
 
 // ─── AML Exports ─────────────────────────────────────────────
 extern "C" {
 
 VcAPI vc_api = {
-    _vc_set_pitch, _vc_enable, _vc_disable, _vc_is_enabled, _vc_get_pitch
+    _vc_set_pitch, _vc_enable, _vc_disable, _vc_is_enabled, _vc_get_pitch,
+    _vc_set_formant, _vc_get_formant
 };
 
 void* __GetModInfo() {
-    static const char* info = "libvoicefx|3.0|VoiceFX RubberBand|brruham";
+    static const char* info = "libvoicefx|4.0|VoiceFX RubberBand+Formant|brruham";
     return (void*)info;
 }
 
