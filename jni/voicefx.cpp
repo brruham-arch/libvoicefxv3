@@ -45,7 +45,7 @@ static void initRB() {
     if (g_rb) { delete g_rb; g_rb = nullptr; }
     g_rb = new RubberBand::RubberBandLiveShifter(
         g_recFreq, 1,
-        RubberBand::RubberBandLiveShifter::OptionDefault
+        0
     );
     g_rb->setPitchScale(g_pitch);
     g_lastPitch = g_pitch;
@@ -73,7 +73,7 @@ static void dspCallback(HDSP, DWORD, void* buf, DWORD len, void*) {
     while (processed + (int)blockSize <= n) {
         const float* in[1]  = { g_inbuf  + processed };
         float*       out[1] = { g_outbuf + processed };
-        g_rb->process(in, out);
+        g_rb->shift(in, out);
         processed += (int)blockSize;
     }
 
