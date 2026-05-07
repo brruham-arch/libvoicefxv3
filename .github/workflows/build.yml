@@ -20,11 +20,12 @@ jobs:
 
     - name: Fetch SoundTouch source
       run: |
-        git clone --depth=1 https://github.com/surina/soundtouch.git /tmp/soundtouch
+        wget -q https://github.com/surina/soundtouch/archive/refs/heads/master.zip -O /tmp/st.zip
+        unzip -q /tmp/st.zip -d /tmp/
         mkdir -p jni/soundtouch
-        cp /tmp/soundtouch/source/SoundTouch/*.cpp jni/soundtouch/
-        cp /tmp/soundtouch/source/SoundTouch/*.h   jni/soundtouch/
-        cp /tmp/soundtouch/include/SoundTouch.h    jni/soundtouch/
+        cp /tmp/soundtouch-master/source/SoundTouch/*.cpp jni/soundtouch/
+        cp /tmp/soundtouch-master/source/SoundTouch/*.h   jni/soundtouch/
+        cp /tmp/soundtouch-master/include/SoundTouch.h    jni/soundtouch/
 
     - name: Build armeabi-v7a
       run: |
