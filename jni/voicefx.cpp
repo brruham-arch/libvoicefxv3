@@ -1,6 +1,6 @@
 /**
  * voicefx.cpp - AML Voice FX Mod SA-MP Android
- * Engine: SoundTouch (pitch shift tanpa tempo berubah)
+ * Engine: RubberBand LiveShifter (pitch shift real-time, tanpa tempo berubah)
  */
 
 #include <stdint.h>
@@ -9,7 +9,7 @@
 #include <dlfcn.h>
 #include <android/log.h>
 #include <stdio.h>
-#include "SoundTouch.h"
+#include "RubberBandLiveShifter.h"
 
 #define LOG_TAG "libvoicefx"
 #define LOGFILE "/storage/emulated/0/voicefx_log.txt"
@@ -24,15 +24,16 @@ typedef unsigned int HRECORD;
 typedef unsigned int HDSP;
 typedef void (*DSPPROC)(HDSP, DWORD, void*, DWORD, void*);
 
-static float  g_pitch    = 1.0f;
-static int    g_enabled  = 0;
-static float  lastPitch  = 1.0f;
+static float  g_pitch   = 1.0f;
+static float  g_lastPitch = 1.0f;
+static int    g_enabled = 0;
+static DWORD  g_recFreq = 8000;
 
 #define MAX_BUF 8192
-static float g_fbuf[MAX_BUF];
+static float g_inbuf[MAX_BUF];
+static float g_outbuf[MAX_BUF];
 
-static soundtouch::SoundTouch g_st;
-static bool g_stInited = false;
+static RubberBand::RubberBandLiveShifter* g_rb = nullptr;
 
 static inline short clamp16(float v) {
     if (v >  32767.f) return  32767;
@@ -40,19 +41,15 @@ static inline short clamp16(float v) {
     return (short)v;
 }
 
-static void initST(DWORD freq) {
-    g_st.setSampleRate(freq > 0 ? freq : 8000);
-    g_st.setChannels(1);
-    g_st.setPitch(g_pitch);
-    g_st.setSetting(SETTING_USE_QUICKSEEK, 1);
-    g_st.setSetting(SETTING_SEQUENCE_MS, 40);
-    g_st.setSetting(SETTING_SEEKWINDOW_MS, 15);
-    g_st.setSetting(SETTING_OVERLAP_MS, 8);
-    g_stInited = true;
-    lastPitch  = g_pitch;
+static void initRB() {
+    if (g_rb) { delete g_rb; g_rb = nullptr; }
+    g_rb = new RubberBand::RubberBandLiveShifter(
+        g_recFreq, 1,
+        RubberBand::RubberBandLiveShifter::OptionDefault
+    );
+    g_rb->setPitchScale(g_pitch);
+    g_lastPitch = g_pitch;
 }
-
-static DWORD g_recFreq = 8000;
 
 static void dspCallback(HDSP, DWORD, void* buf, DWORD len, void*) {
     if (!g_enabled || g_pitch == 1.0f) return;
@@ -60,24 +57,30 @@ static void dspCallback(HDSP, DWORD, void* buf, DWORD len, void*) {
     int n = (int)(len / 2);
     if (n <= 0 || n > MAX_BUF) return;
 
-    if (!g_stInited) initST(g_recFreq);
+    if (!g_rb) initRB();
 
-    if (lastPitch != g_pitch) {
-        g_st.setPitch(g_pitch);
-        g_st.clear();
-        lastPitch = g_pitch;
+    if (g_lastPitch != g_pitch) {
+        g_rb->setPitchScale(g_pitch);
+        g_lastPitch = g_pitch;
     }
 
+    size_t blockSize = g_rb->getBlockSize();
+
     for (int i = 0; i < n; i++)
-        g_fbuf[i] = s16[i] / 32768.0f;
+        g_inbuf[i] = s16[i] / 32768.0f;
 
-    g_st.putSamples(g_fbuf, n);
-    int got = (int)g_st.receiveSamples(g_fbuf, n);
+    int processed = 0;
+    while (processed + (int)blockSize <= n) {
+        const float* in[1]  = { g_inbuf  + processed };
+        float*       out[1] = { g_outbuf + processed };
+        g_rb->process(in, out);
+        processed += (int)blockSize;
+    }
 
-    for (int i = 0; i < got; i++)
-        s16[i] = clamp16(g_fbuf[i] * 32768.0f);
-    if (got < n)
-        memset(s16 + got, 0, (n - got) * sizeof(short));
+    for (int i = 0; i < processed; i++)
+        s16[i] = clamp16(g_outbuf[i] * 32768.0f);
+    if (processed < n)
+        memset(s16 + processed, 0, (n - processed) * sizeof(short));
 }
 
 // ─── BASS fn pointers ────────────────────────────────────────
@@ -101,14 +104,14 @@ static HRECORD hook_BASSRecordStart(DWORD freq, DWORD chans, DWORD flags, void* 
 }
 
 // ─── Public API ──────────────────────────────────────────────
-static void  _vc_set_pitch(float f) {
+static void _vc_set_pitch(float f) {
     if (f < 0.25f) f = 0.25f;
     if (f > 4.0f)  f = 4.0f;
     g_pitch = f;
-    if (g_stInited) { g_st.setPitch(f); g_st.clear(); lastPitch = f; }
+    if (g_rb) { g_rb->setPitchScale(f); g_lastPitch = f; }
 }
-static void  _vc_enable(void)     { g_enabled = 1; }
-static void  _vc_disable(void)    { g_enabled = 0; g_st.clear(); }
+static void  _vc_enable(void)     { g_enabled = 1; if (!g_rb) initRB(); }
+static void  _vc_disable(void)    { g_enabled = 0; }
 static int   _vc_is_enabled(void) { return g_enabled; }
 static float _vc_get_pitch(void)  { return g_pitch; }
 
@@ -128,7 +131,7 @@ VcAPI vc_api = {
 };
 
 void* __GetModInfo() {
-    static const char* info = "libvoicefx|3.0|VoiceFX SoundTouch|brruham";
+    static const char* info = "libvoicefx|3.0|VoiceFX RubberBand|brruham";
     return (void*)info;
 }
 
